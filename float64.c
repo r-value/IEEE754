@@ -174,6 +174,8 @@ char* write_to_string(uint64_t x){
 	char* ans = malloc(BUFFER_LEN * sizeof(char));
 	if(isNaN(x))
 		strcpy(ans, "nan");
+	else if(isINF(x))
+		strcpy(ans, Sign(x) > 0 ? "inf" : "-inf");
 	else
 		sprintf(ans, "%.1200f\n", _mm_cvtsi64_si128(x));
 	return ans;
