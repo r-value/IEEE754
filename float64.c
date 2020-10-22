@@ -107,11 +107,11 @@ int main(){ // Function: Parse & Evaluate
 }
 
 inline bool isNaN(uint64_t x){
-	return (Exp(x) == (1 << 11) - 1) && Fraction(x) != 0;
+	return (Exp(x) == (1 << 11) - 1) && (Fraction(x) & ((1ull << 52) - 1)) != 0;
 }
 
 inline bool isINF(uint64_t x){
-	return (Exp(x) == (1 << 11) - 1) && Fraction(x) == 0;
+	return (Exp(x) == (1 << 11) - 1) && (Fraction(x) & ((1ull << 52) - 1))  == 0;
 }
 
 uint64_t add(uint64_t lhs, uint64_t rhs){
@@ -172,6 +172,7 @@ uint64_t read_from_string(char* str){
 
 char* write_to_string(uint64_t x){
 	char* ans = malloc(BUFFER_LEN * sizeof(char));
+	printf("\"0x%016lx\"\n",x);
 	if(isNaN(x))
 		strcpy(ans, "nan");
 	else if(isINF(x))
@@ -186,9 +187,9 @@ inline int Exp(uint64_t x){
 }
 
 inline int Sign(uint64_t x){
-	return (x >> 63) ? 1 : -1;
+	return (x >> 63) == 0 ? 1 : -1;
 }
 
 inline uint64_t Fraction(uint64_t x){
-	return (x & ((1ull << 53) - 1)) | (Exp(x) ? 1ull << 53 : 0);
+	return (x & ((1ull << 52) - 1)) | (Exp(x) ? 1ull << 52 : 0);
 }
