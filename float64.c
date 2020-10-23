@@ -23,10 +23,10 @@ inline int Prior(char);
 inline int Sign(uint64_t);
 inline bool isNaN(uint64_t);
 inline bool isINF(uint64_t);
-inline uint64_t Neg(uint64_t);
 inline uint64_t Exp(uint64_t);
 inline uint64_t LowBit(uint64_t);
-inline int64_t Fraction(uint64_t);
+inline uint64_t Fraction(uint64_t);
+inline uint64_t Negative(uint64_t);
 inline uint64_t Evaluate(uint64_t, uint64_t, char);
 
 #ifdef IVE
@@ -66,7 +66,7 @@ int main(){ // Function: Parse & Evaluate
 				*(numcur++) = '\0';
 				*(numtop++) = read_from_string(num);
 				if(negop){
-					*(numtop - 1) = Neg(*(numtop - 1));
+					*(numtop - 1) = Negative(*(numtop - 1));
 					negop = false;
 				}
 				free(num);
@@ -134,7 +134,7 @@ uint64_t add(uint64_t lhs, uint64_t rhs){
 		return NaN;
 
 	if(Sign(lhs) != Sign(rhs)) // only handle same sign
-		return subtract(lhs, Neg(rhs));
+		return subtract(lhs, Negative(rhs));
 
 	if(isINF(lhs) || isINF(rhs)){
 		if(isINF(lhs))
@@ -152,21 +152,20 @@ uint64_t add(uint64_t lhs, uint64_t rhs){
 	}
 	
 	int ediff = Exp(lhs) - Exp(rhs);
-	assert(ediff >= 0);
 
 	uint64_t ans = 0;
 	bool extra = false;
 	uint64_t ansexp = Exp(lhs);
-	uint64_t rf = Fraction(rhs) << 2;
+	uint64_t rhsf = Fraction(rhs) << 2;
 	uint64_t ansf = Fraction(lhs) << 2;
 
-	while(rf != 0){
-		uint64_t cur = LowBit(rf) >> ediff;
+	while(rhsf != 0){
+		uint64_t cur = LowBit(rhsf) >> ediff;
 		if(cur == 0)
 			extra = true;
 		else
 			ansf += cur;
-		rf -= LowBit(rf);
+		rhsf -= LowBit(rhsf);
 	}
 
 	// Adjust EXP
@@ -206,7 +205,75 @@ uint64_t add(uint64_t lhs, uint64_t rhs){
 }
 
 uint64_t subtract(uint64_t lhs, uint64_t rhs){
-	return d2u(u2d(lhs) - u2d(rhs));
+//	return d2u(u2d(lhs) - u2d(rhs));
+
+	if(isNaN(lhs) || isNaN(rhs))
+		return NaN;
+
+	if(Sign(lhs) != Sign(rhs)) // only handle same sign
+		return add(lhs, Negative(rhs));
+
+	if(isINF(lhs) && isINF(rhs))
+		return NaN;
+	if(isINF(lhs) || isINF(rhs))
+		return INF;
+	if(lhs == rhs)
+		return 0; // avoid unexpected negative 0
+
+	bool negflag = false;
+	if(Exp(lhs) < Exp(rhs) || (Exp(lhs) == Exp(rhs) &&Fraction(lhs) < Fraction(rhs))){
+		negflag = true;
+		uint64_t tmp = lhs;
+		lhs = rhs;
+		rhs = tmp;
+	}
+
+	int ediff = Exp(lhs) - Exp(rhs);
+
+	uint64_t ans = 0;
+	bool extra = false;
+	uint64_t ansexp = Exp(lhs);
+	uint64_t ansf = Fraction(lhs) << 3;
+	uint64_t rhsf = Fraction(rhs) << 3;
+
+	while(rhsf != 0){
+		uint64_t cur = LowBit(rhsf) >> ediff;
+		if(cur == 0)
+			extra = true;
+		else
+			ansf -= cur;
+		rhsf -= LowBit(rhsf);
+	}
+
+	// Adjust EXP
+	while(ansexp > 0 && (ansf & (1ull << 55)) == 0){
+		--ansexp;
+		ansf <<= 1;
+	}
+	// Rounding
+	if((ansf & 7) < 4)
+		ansf >>= 3;
+	else if((ansf & 7) > 4)
+		ansf = (ansf >> 3) + 1;
+	else{
+		if(extra)
+			ansf >>= 3;
+		else{
+			ansf >>= 3;
+			if((ansf & 1) != 0)
+				++ansf;
+		}
+	}
+	// NOTE: only 011111 -> 100000, no more rounding required
+	if(ansf >= (1ull << 53)){
+		++ansexp;
+		ansf >>= 1;
+	}
+
+	ans = ansexp << 52 | (ansf & ((1ull << 52) - 1));
+
+	ans |= lhs & (1ull << 63); // Add sign
+	return negflag ? Negative(ans) : ans;
 }
 
 uint64_t multiply(uint64_t lhs, uint64_t rhs){
@@ -278,7 +345,7 @@ inline uint64_t LowBit(uint64_t x){
 	return x & ((~x) + 1);
 }
 
-inline uint64_t Neg(uint64_t x){
+inline uint64_t Negative(uint64_t x){
 	return x ^ (1ull << 63);
 }
 
@@ -290,6 +357,6 @@ inline int Sign(uint64_t x){
 	return (x >> 63) == 0 ? 1 : -1;
 }
 
-inline int64_t Fraction(uint64_t x){
+inline uint64_t Fraction(uint64_t x){
 	return (x & ((1ull << 52) - 1)) | (Exp(x) ? 1ull << 52 : 0);
 }
