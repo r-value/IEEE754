@@ -6,21 +6,27 @@
 #include <stdbool.h>
 #include <x86intrin.h>
 
-const int BUFFER_LEN=100010;
+const int BUFFER_LEN = 100010;
+const uint64_t INF = 0x7FF0000000000000;
+const uint64_t NaN = 0x7FF00000001F1E33;
+const uint64_t NINF = 0xFFF0000000000000;
 
 uint64_t read_from_string(char*);
 char* write_to_string(uint64_t);
+
 uint64_t add(uint64_t, uint64_t);
 uint64_t subtract(uint64_t, uint64_t);
 uint64_t multiply(uint64_t, uint64_t);
 uint64_t divide(uint64_t, uint64_t);
 
 inline int Prior(char);
-inline int Exp(uint64_t);
 inline int Sign(uint64_t);
 inline bool isNaN(uint64_t);
 inline bool isINF(uint64_t);
-inline uint64_t Fraction(uint64_t);
+inline uint64_t Neg(uint64_t);
+inline uint64_t Exp(uint64_t);
+inline uint64_t LowBit(uint64_t);
+inline int64_t Fraction(uint64_t);
 inline uint64_t Evaluate(uint64_t, uint64_t, char);
 
 #ifdef IVE
@@ -46,6 +52,7 @@ int main(){ // Function: Parse & Evaluate
 
 	{
 		bool noprev = true;
+		bool negop = false;
 		char* cur = expr;
 		while(*cur != '\0'){
 			if(isspace(*cur))
@@ -58,6 +65,10 @@ int main(){ // Function: Parse & Evaluate
 					*(numcur++) = *(cur++);
 				*(numcur++) = '\0';
 				*(numtop++) = read_from_string(num);
+				if(negop){
+					*(numtop - 1) = Neg(*(numtop - 1));
+					negop = false;
+				}
 				free(num);
 			}
 			else if(*cur == ')'){
@@ -74,22 +85,24 @@ int main(){ // Function: Parse & Evaluate
 				*(opstop++) = *cur;
 				cur++;
 				noprev = true;
+			}else if(*cur == '-' && noprev){
+				negop = true;
+				cur++;
 			}
 			else{
-//				printf("$ %c\n",*cur);
 				while(opstop != stackops && Prior(*(opstop - 1)) >= Prior(*cur)){
 					uint64_t rhs = *(--numtop);
 					uint64_t lhs = *(--numtop);
 					*(numtop++) = Evaluate(lhs, rhs, *(--opstop));
 				}
-				if(*cur == '-' && noprev)
-					*(numtop++) = 0;
 				*(opstop++) = *cur;
 				if(*cur == '(')
 					noprev = true;
 				cur++;
 			}
 		}
+		for(char* x = cur; *x != '\0'; x++)
+			putchar(*x);
 		while(opstop != stackops){
 			uint64_t rhs = *(--numtop);
 			uint64_t lhs = *(--numtop);
@@ -111,11 +124,85 @@ inline bool isNaN(uint64_t x){
 }
 
 inline bool isINF(uint64_t x){
-	return (Exp(x) == (1 << 11) - 1) && (Fraction(x) & ((1ull << 52) - 1))  == 0;
+	return (Exp(x) == (1 << 11) - 1) && (Fraction(x) & ((1ull << 52) - 1)) == 0;
 }
 
 uint64_t add(uint64_t lhs, uint64_t rhs){
-	return d2u(u2d(lhs) + u2d(rhs));
+//	return d2u(u2d(lhs) + u2d(rhs));
+
+	if(isNaN(lhs) || isNaN(rhs))
+		return NaN;
+
+	if(Sign(lhs) != Sign(rhs)) // only handle same sign
+		return subtract(lhs, Neg(rhs));
+
+	if(isINF(lhs) || isINF(rhs)){
+		if(isINF(lhs))
+			return lhs;
+		else{
+			assert(isINF(rhs));
+			return rhs;
+		}
+	}
+
+	if(Exp(lhs) < Exp(rhs)){
+		uint64_t tmp = lhs;
+		lhs = rhs;
+		rhs = tmp;
+	}
+	
+	int ediff = Exp(lhs) - Exp(rhs);
+	assert(ediff >= 0);
+
+	uint64_t ans = 0;
+	bool extra = false;
+	uint64_t ansexp = Exp(lhs);
+	uint64_t rf = Fraction(rhs) << 2;
+	uint64_t ansf = Fraction(lhs) << 2;
+
+	while(rf != 0){
+		uint64_t cur = LowBit(rf) >> ediff;
+		if(cur == 0)
+			extra = true;
+		else
+			ansf += cur;
+		rf -= LowBit(rf);
+	}
+
+	// Adjust EXP
+	while(ansf >= (1ull << 55)){
+		++ansexp;
+		extra = extra || (ansf & 1) != 0;
+		ansf >>= 1;
+	}
+	// Rounding
+	if((ansf & 3) < 2)
+		ansf >>= 2;
+	else if((ansf & 3) > 2)
+		ansf = (ansf >> 2) + 1;
+	else{
+		assert((ansf & 3) ==2);
+		if(extra)
+			ansf = (ansf >> 2) + 1;
+		else{ // ties to even
+			ansf >>= 2;
+			if((ansf & 1) != 0)
+				++ansf;
+		}
+	}
+	// NOTE: only 011111 -> 100000, no more rounding required
+	if(ansf >= (1ull << 53)){
+		++ansexp;
+		ansf >>= 1;
+	}
+
+	if(ansexp >= (1ull << 11)) // overflow
+		ans = INF;
+	else
+		ans = ansexp << 52 | (ansf & ((1ull << 52) - 1));
+
+	ans |= (1ull << 63) & lhs; // Add sign
+	return ans;
 }
 
 uint64_t subtract(uint64_t lhs, uint64_t rhs){
@@ -131,19 +218,27 @@ uint64_t divide(uint64_t lhs, uint64_t rhs){
 }
 
 inline uint64_t Evaluate(uint64_t lhs, uint64_t rhs, char op){
-//	printf("%f %c %f\n", u2d(lhs), op, u2d(rhs));
+	uint64_t ans;
 	switch(op){
 		case '+':
-			return add(lhs, rhs);
+			ans = add(lhs, rhs);
+			break;
 		case '-':
-			return subtract(lhs, rhs);
+			ans = subtract(lhs, rhs);
+			break;
 		case '*':
-			return multiply(lhs, rhs);
+			ans = multiply(lhs, rhs);
+			break;
 		case '/':
-			return divide(lhs, rhs);
+			ans = divide(lhs, rhs);
+			break;
 		default:
 			assert(false);
 	}
+#ifdef PALL
+	printf("%f %c %f = %f\n",u2d(lhs),op,u2d(rhs),u2d(ans));
+#endif
+	return ans;
 }
 
 inline int Prior(char x){
@@ -163,26 +258,31 @@ inline int Prior(char x){
 }
 
 uint64_t read_from_string(char* str){
-//	printf("read \"%s\", ",str);
 	uint64_t x;
 	sscanf(str, "%lf", &x);
-//	printf("result = %f\n", u2d(x));
 	return x;
 }
 
 char* write_to_string(uint64_t x){
 	char* ans = malloc(BUFFER_LEN * sizeof(char));
-//	printf("\"0x%016lx\"\n",x);
 	if(isNaN(x))
 		strcpy(ans, "nan");
 	else if(isINF(x))
 		strcpy(ans, Sign(x) > 0 ? "inf" : "-inf");
 	else
-		sprintf(ans, "%.1200f\n", _mm_cvtsi64_si128(x));
+		sprintf(ans, "%.1200f", _mm_cvtsi64_si128(x));
 	return ans;
 }
 
-inline int Exp(uint64_t x){
+inline uint64_t LowBit(uint64_t x){
+	return x & ((~x) + 1);
+}
+
+inline uint64_t Neg(uint64_t x){
+	return x ^ (1ull << 63);
+}
+
+inline uint64_t Exp(uint64_t x){
 	return (x >> 52) & ((1 << 11) - 1);
 }
 
@@ -190,6 +290,6 @@ inline int Sign(uint64_t x){
 	return (x >> 63) == 0 ? 1 : -1;
 }
 
-inline uint64_t Fraction(uint64_t x){
+inline int64_t Fraction(uint64_t x){
 	return (x & ((1ull << 52) - 1)) | (Exp(x) ? 1ull << 52 : 0);
 }
