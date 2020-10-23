@@ -156,8 +156,8 @@ uint64_t add(uint64_t lhs, uint64_t rhs){
 	uint64_t ans = 0;
 	bool extra = false;
 	uint64_t ansexp = Exp(lhs);
-	uint64_t rhsf = Fraction(rhs) << 2;
-	uint64_t ansf = Fraction(lhs) << 2;
+	uint64_t rhsf = Fraction(rhs) << 1;
+	uint64_t ansf = Fraction(lhs) << 1;
 
 	while(rhsf != 0){
 		uint64_t cur = LowBit(rhsf) >> ediff;
@@ -169,25 +169,20 @@ uint64_t add(uint64_t lhs, uint64_t rhs){
 	}
 
 	// Adjust EXP
-	while(ansf >= (1ull << 55)){
+	while(ansf >= (1ull << 54)){
 		++ansexp;
 		extra = extra || (ansf & 1) != 0;
 		ansf >>= 1;
 	}
 	// Rounding
-	if((ansf & 3) < 2)
-		ansf >>= 2;
-	else if((ansf & 3) > 2)
-		ansf = (ansf >> 2) + 1;
+	if((ansf & 1) == 0)
+		ansf >>= 1;
 	else{
-		assert((ansf & 3) ==2);
+		ansf >>= 1;
 		if(extra)
-			ansf = (ansf >> 2) + 1;
-		else{ // ties to even
-			ansf >>= 2;
-			if((ansf & 1) != 0)
-				++ansf;
-		}
+			++ansf;
+		else if((ansf & 1) != 0) // ties to even
+			++ansf;
 	}
 	// NOTE: only 011111 -> 100000, no more rounding required
 	if(ansf >= (1ull << 53)){
@@ -233,8 +228,8 @@ uint64_t subtract(uint64_t lhs, uint64_t rhs){
 	uint64_t ans = 0;
 	bool extra = false;
 	uint64_t ansexp = Exp(lhs);
-	uint64_t ansf = Fraction(lhs) << 3;
-	uint64_t rhsf = Fraction(rhs) << 3;
+	uint64_t ansf = Fraction(lhs) << 1;
+	uint64_t rhsf = Fraction(rhs) << 1;
 
 	while(rhsf != 0){
 		uint64_t cur = LowBit(rhsf) >> ediff;
@@ -246,23 +241,17 @@ uint64_t subtract(uint64_t lhs, uint64_t rhs){
 	}
 
 	// Adjust EXP
-	while(ansexp > 0 && (ansf & (1ull << 55)) == 0){
+	while(ansexp > 0 && (ansf & (1ull << 53)) == 0){
 		--ansexp;
 		ansf <<= 1;
 	}
 	// Rounding
-	if((ansf & 7) < 4)
-		ansf >>= 3;
-	else if((ansf & 7) > 4)
-		ansf = (ansf >> 3) + 1;
+	if((ansf & 1) == 0)
+		ansf >>= 1;
 	else{
-		if(extra)
-			ansf >>= 3;
-		else{
-			ansf >>= 3;
-			if((ansf & 1) != 0)
-				++ansf;
-		}
+		ansf >>= 1;
+		if(!extra && (ansf & 1) != 0) // ties to even
+			++ansf;
 	}
 	// NOTE: only 011111 -> 100000, no more rounding required
 	if(ansf >= (1ull << 53)){
