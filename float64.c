@@ -275,7 +275,74 @@ uint64_t subtract(uint64_t lhs, uint64_t rhs){
 }
 
 uint64_t multiply(uint64_t lhs, uint64_t rhs){
-	return d2u(u2d(lhs) * u2d(rhs));
+//	return d2u(u2d(lhs) * u2d(rhs));
+
+	if(isNaN(lhs) || isNaN(rhs))
+		return NaN;
+	
+	if((isINF(lhs) && isZero(rhs)) || (isINF(rhs) && isZero(lhs)))
+		return NaN;
+	if(isINF(lhs) || isINF(rhs))
+		return Sign(lhs) * Sign(rhs) > 0 ? INF : NINF;
+
+	uint64_t ans = 0;
+	bool extra = false;
+	int64_t ansexp = Exp(lhs) + Exp(rhs) - 1023 - 51;
+	intEx prod = ((intEx)(Fraction(lhs)) * (intEx)(Fraction(rhs)));
+
+	// Adjusting exp
+	while(ansexp < 0 || prod >= (1ull << 54)){
+		++ansexp;
+		extra |= prod & 1;
+		prod >>= 1;
+	}
+	while(ansexp > 0 && (prod & (1ull << 53)) == 0){
+		--ansexp;
+		prod <<= 1;
+	}
+	while(ansexp < 0){
+		++ansexp;
+		extra |= prod & 1;
+		prod >>= 1;
+	}
+
+	if(ansexp == 0){ // subnormal handling
+		extra |= prod & 1;
+		prod >>= 1;
+	}
+
+	// Rounding
+	if((prod & 1) == 0)
+		prod >>= 1;
+	else{
+		prod >>= 1;
+		if(extra)
+			++prod;
+		else if((prod & 1) != 0)
+			++prod;
+	}
+
+	if(prod >= (1ull << 53)){
+		if(ansexp > 0)
+			prod >>= 1;
+		++ansexp;
+	}
+
+	if(ansexp >= (1ull << 11)) // overflow
+		ans = INF;
+	else
+		ans = ansexp << 52 | (prod & ((1ull << 52) - 1));
+
+	ans |= ((1ull << 63) & lhs) ^ ((1ull << 63) & rhs); // Add sign
+
+#ifdef PALL
+	uint64_t correct = d2u(u2d(lhs) * u2d(rhs));
+	printf("%llx %llx\n",correct,ans);
+	printf("%d %lld %llx\n",Sign(correct),Exp(correct),Fraction(correct));
+	printf("%d %lld %llx\n",Sign(ans),Exp(ans),Fraction(ans));
+#endif
+
+	return ans;
 }
 
 uint64_t divide(uint64_t lhs, uint64_t rhs){
