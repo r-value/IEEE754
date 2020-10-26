@@ -23,7 +23,8 @@ inline int Prior(char);
 inline int Sign(uint64_t);
 inline bool isNaN(uint64_t);
 inline bool isINF(uint64_t);
-inline uint64_t Exp(uint64_t);
+inline bool isZero(uint64_t);
+inline int64_t Exp(uint64_t);
 inline uint64_t LowBit(uint64_t);
 inline uint64_t Fraction(uint64_t);
 inline uint64_t Negative(uint64_t);
@@ -127,6 +128,10 @@ inline bool isINF(uint64_t x){
 	return (Exp(x) == (1 << 11) - 1) && (Fraction(x) & ((1ull << 52) - 1)) == 0;
 }
 
+inline bool isZero(uint64_t x){
+	return (x & ((1ull << 63) - 1)) == 0;
+}
+
 uint64_t add(uint64_t lhs, uint64_t rhs){
 //	return d2u(u2d(lhs) + u2d(rhs));
 
@@ -170,9 +175,10 @@ uint64_t add(uint64_t lhs, uint64_t rhs){
 
 	// Adjust EXP
 	while(ansf >= (1ull << 54)){
+		if(ansexp > 0)
+			ansf >>= 1;
 		++ansexp;
 		extra = extra || (ansf & 1) != 0;
-		ansf >>= 1;
 	}
 	// Rounding
 	if((ansf & 1) == 0)
@@ -186,8 +192,9 @@ uint64_t add(uint64_t lhs, uint64_t rhs){
 	}
 	// NOTE: only 011111 -> 100000, no more rounding required
 	if(ansf >= (1ull << 53)){
+		if(ansexp > 0)
+			ansf >>= 1;
 		++ansexp;
-		ansf >>= 1;
 	}
 
 	if(ansexp >= (1ull << 11)) // overflow
@@ -216,7 +223,7 @@ uint64_t subtract(uint64_t lhs, uint64_t rhs){
 		return 0; // avoid unexpected negative 0
 
 	bool negflag = false;
-	if(Exp(lhs) < Exp(rhs) || (Exp(lhs) == Exp(rhs) &&Fraction(lhs) < Fraction(rhs))){
+	if(Exp(lhs) < Exp(rhs) || (Exp(lhs) == Exp(rhs) && Fraction(lhs) < Fraction(rhs))){
 		negflag = true;
 		uint64_t tmp = lhs;
 		lhs = rhs;
@@ -243,7 +250,8 @@ uint64_t subtract(uint64_t lhs, uint64_t rhs){
 	// Adjust EXP
 	while(ansexp > 0 && (ansf & (1ull << 53)) == 0){
 		--ansexp;
-		ansf <<= 1;
+		if(ansexp > 0) // underflow check
+			ansf <<= 1;
 	}
 	// Rounding
 	if((ansf & 1) == 0)
@@ -255,8 +263,9 @@ uint64_t subtract(uint64_t lhs, uint64_t rhs){
 	}
 	// NOTE: only 011111 -> 100000, no more rounding required
 	if(ansf >= (1ull << 53)){
+		if(ansexp > 0)
+			ansf >>= 1;
 		++ansexp;
-		ansf >>= 1;
 	}
 
 	ans = ansexp << 52 | (ansf & ((1ull << 52) - 1));
@@ -338,7 +347,7 @@ inline uint64_t Negative(uint64_t x){
 	return x ^ (1ull << 63);
 }
 
-inline uint64_t Exp(uint64_t x){
+inline int64_t Exp(uint64_t x){
 	return (x >> 52) & ((1 << 11) - 1);
 }
 
@@ -347,5 +356,8 @@ inline int Sign(uint64_t x){
 }
 
 inline uint64_t Fraction(uint64_t x){
-	return (x & ((1ull << 52) - 1)) | (Exp(x) ? 1ull << 52 : 0);
+	if(Exp(x) != 0)
+		return 1ull << 52 | (x & ((1ull << 52) - 1));
+	else
+		return (x & ((1ull << 52) - 1)) << 1; // normalize subnormal
 }
