@@ -288,50 +288,50 @@ uint64_t multiply(uint64_t lhs, uint64_t rhs){
 	uint64_t ans = 0;
 	bool extra = false;
 	int64_t ansexp = Exp(lhs) + Exp(rhs) - 1023 - 51;
-	intEx prod = ((intEx)(Fraction(lhs)) * (intEx)(Fraction(rhs)));
+	intEx ansf = ((intEx)(Fraction(lhs)) * (intEx)(Fraction(rhs)));
 
 	// Adjusting exp
-	while(ansexp < 0 || prod >= (1ull << 54)){
+	while(ansexp < 0 || ansf >= (1ull << 54)){
 		++ansexp;
-		extra |= prod & 1;
-		prod >>= 1;
+		extra |= ansf & 1;
+		ansf >>= 1;
 	}
-	while(ansexp > 0 && (prod & (1ull << 53)) == 0){
+	while(ansexp > 0 && (ansf & (1ull << 53)) == 0){
 		--ansexp;
-		prod <<= 1;
+		ansf <<= 1;
 	}
 	while(ansexp < 0){
 		++ansexp;
-		extra |= prod & 1;
-		prod >>= 1;
+		extra |= ansf & 1;
+		ansf >>= 1;
 	}
 
 	if(ansexp == 0){ // subnormal handling
-		extra |= prod & 1;
-		prod >>= 1;
+		extra |= ansf & 1;
+		ansf >>= 1;
 	}
 
 	// Rounding
-	if((prod & 1) == 0)
-		prod >>= 1;
+	if((ansf & 1) == 0)
+		ansf >>= 1;
 	else{
-		prod >>= 1;
+		ansf >>= 1;
 		if(extra)
-			++prod;
-		else if((prod & 1) != 0)
-			++prod;
+			++ansf;
+		else if((ansf & 1) != 0)
+			++ansf;
 	}
 
-	if(prod >= (1ull << 53)){
+	if(ansf >= (1ull << 53)){
 		if(ansexp > 0)
-			prod >>= 1;
+			ansf >>= 1;
 		++ansexp;
 	}
 
 	if(ansexp >= (1ull << 11)) // overflow
 		ans = INF;
 	else
-		ans = ansexp << 52 | (prod & ((1ull << 52) - 1));
+		ans = ansexp << 52 | (ansf & ((1ull << 52) - 1));
 
 	ans |= ((1ull << 63) & lhs) ^ ((1ull << 63) & rhs); // Add sign
 
@@ -346,7 +346,80 @@ uint64_t multiply(uint64_t lhs, uint64_t rhs){
 }
 
 uint64_t divide(uint64_t lhs, uint64_t rhs){
-	return d2u(u2d(lhs) / u2d(rhs));
+//	return d2u(u2d(lhs) / u2d(rhs));
+
+	if(isNaN(lhs) || isNaN(rhs))
+		return NaN;
+
+	if(isZero(rhs)){ // divided by zero
+		if(isZero(lhs))
+			return NaN;
+		else
+			return INF | ((1ull << 63) & (lhs ^ rhs));
+	}
+	if(isINF(rhs)){  // divided by INF
+		if(isINF(lhs))
+			return NaN;
+		else
+			return ((1ull << 63) & (lhs ^ rhs)); // signed zero
+	}
+	if(isINF(lhs))
+		return INF | ((1ull << 63) & (lhs ^ rhs)); // INF/INF handled, other return INF
+
+	uint64_t ans = 0;
+	bool extra = false;
+	int64_t ansexp = Exp(lhs) - Exp(rhs) + 1023;
+	uint64_t ansf = ((intEx)(Fraction(lhs)) << 53) / (intEx)(Fraction(rhs));
+
+	if(((intEx)(Fraction(lhs)) << 53) % (intEx)(Fraction(rhs)) != 0)
+		extra = true;
+
+	// Adjusting exp
+	while(ansexp < 0 || ansf >= (1ull << 54)){
+		++ansexp;
+		extra |= ansf & 1;
+		ansf >>= 1;
+	}
+	while(ansexp > 0 && (ansf & (1ull << 53)) == 0){
+		--ansexp;
+		ansf <<= 1;
+	}
+	while(ansexp < 0){
+		++ansexp;
+		extra |= ansf & 1;
+		ansf >>= 1;
+	}
+
+	if(ansexp == 0){ // subnormal handling
+		extra |= ansf & 1;
+		ansf >>= 1;
+	}
+
+	// Rounding
+	if((ansf & 1) == 0)
+		ansf >>= 1;
+	else{
+		ansf >>= 1;
+		if(extra)
+			++ansf;
+		else if((ansf & 1) != 0)
+			++ansf;
+	}
+
+	if(ansf >= (1ull << 53)){
+		if(ansexp > 0)
+			ansf >>= 1;
+		++ansexp;
+	}
+
+	if(ansexp >= (1ull << 11)) // overflow
+		ans = INF;
+	else
+		ans = ansexp << 52 | (ansf & ((1ull << 52) - 1));
+
+	ans |= ((1ull << 63) & lhs) ^ ((1ull << 63) & rhs); // Add sign
+
+	return ans;
 }
 
 inline uint64_t Evaluate(uint64_t lhs, uint64_t rhs, char op){
