@@ -6,7 +6,7 @@
 #include <stdbool.h>
 #include <x86intrin.h>
 
-#define ADD_SYS 1
+#define ADD_SYS 0
 #define SUB_SYS 1
 #define MUL_SYS 1
 #define DIV_SYS 1
@@ -117,17 +117,17 @@ int main(){ // Function: Parse & Evaluate
         }
         for(char* x = cur; *x != '\0'; x++)
             putchar(*x);
-		while(opstop != stackops){
-			if(*(opstop - 1) == 'n'){
-				*(numtop - 1) = Negative(*(numtop - 1));
-				--opstop;
-			}
-			else{
-				uint64_t rhs = *(--numtop);
-				uint64_t lhs = *(--numtop);
-				*(numtop++) = Evaluate(lhs, rhs, *(--opstop));
-			}
-		}
+        while(opstop != stackops){
+            if(*(opstop - 1) == 'n'){
+                *(numtop - 1) = Negative(*(numtop - 1));
+                --opstop;
+            }
+            else{
+                uint64_t rhs = *(--numtop);
+                uint64_t lhs = *(--numtop);
+                *(numtop++) = Evaluate(lhs, rhs, *(--opstop));
+            }
+        }
     }
 
     char* ans = write_to_string(*stacknum);
@@ -136,6 +136,7 @@ int main(){ // Function: Parse & Evaluate
 
     free(expr);
     free(stacknum);
+    free(stackops);
     return 0;
 }
 
@@ -178,6 +179,8 @@ uint64_t add(uint64_t lhs, uint64_t rhs){
     }
     
     int ediff = Exp(lhs) - Exp(rhs);
+    if(ediff > 63)
+        ediff = 63;
     assert(ediff >= 0);
 
     uint64_t ans = 0;
@@ -316,7 +319,7 @@ uint64_t multiply(uint64_t lhs, uint64_t rhs){
 
     if(isNaN(lhs) || isNaN(rhs))
         return NaN;
-    
+
     if((isINF(lhs) && isZero(rhs)) || (isINF(rhs) && isZero(lhs)))
         return NaN;
     if(isINF(lhs) || isINF(rhs))
