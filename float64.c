@@ -7,8 +7,8 @@
 #include <x86intrin.h>
 
 #define ADD_SYS 0
-#define SUB_SYS 0 // Now Debugging
-#define MUL_SYS 1
+#define SUB_SYS 0
+#define MUL_SYS 0 // Now debugging
 #define DIV_SYS 1
 
 const int BUFFER_LEN = 100010;
@@ -377,7 +377,7 @@ uint64_t multiply(uint64_t lhs, uint64_t rhs){
         ++ansexp;
     }
 
-    if(ansexp >= (1ull << 11)) // overflow
+    if(ansexp >= ((1ull << 11) - 1)) // overflow
         ans = INF;
     else
         ans = ansexp << 52 | (ansf & ((1ull << 52) - 1));
@@ -464,7 +464,7 @@ uint64_t divide(uint64_t lhs, uint64_t rhs){
         ++ansexp;
     }
 
-    if(ansexp >= (1ull << 11)) // overflow
+    if(ansexp >= ((1ull << 11) - 1)) // overflow
         ans = INF;
     else
         ans = ansexp << 52 | (ansf & ((1ull << 52) - 1));
