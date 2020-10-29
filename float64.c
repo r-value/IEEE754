@@ -7,7 +7,7 @@
 #include <x86intrin.h>
 
 #define ADD_SYS 0
-#define SUB_SYS 1
+#define SUB_SYS 0 // Now Debugging
 #define MUL_SYS 1
 #define DIV_SYS 1
 
@@ -205,7 +205,7 @@ uint64_t add(uint64_t lhs, uint64_t rhs){
         ++ansexp;
     }
     if(ansexp == 0){ // subnormalized
-        extra = extra || (ansf & 1) != 0;
+        assert((ansf & 1) == 0);
         ansf >>= 1;
         assert(ansexp < (1ull << 53));
     }
@@ -231,7 +231,7 @@ uint64_t add(uint64_t lhs, uint64_t rhs){
 
     assert((ansexp != 0 && ansf < (1ull << 53)) || (ansexp == 0 && ansf < (1ull << 52)));
 
-    if(ansexp >= (1ull << 11)) // overflow
+    if(ansexp >= ((1ull << 11) - 1)) // overflow
         ans = INF;
     else
         ans = ansexp << 52 | (ansf & ((1ull << 52) - 1));
@@ -254,8 +254,10 @@ uint64_t subtract(uint64_t lhs, uint64_t rhs){
 
     if(isINF(lhs) && isINF(rhs))
         return NaN;
-    if(isINF(lhs) || isINF(rhs))
-        return INF;
+    if(isINF(lhs))
+        return lhs;
+    if(isINF(rhs))
+        return Negative(rhs);
     if(lhs == rhs)
         return 0; // avoid unexpected negative 0
 
@@ -268,12 +270,14 @@ uint64_t subtract(uint64_t lhs, uint64_t rhs){
     }
 
     int ediff = Exp(lhs) - Exp(rhs);
+    if(ediff > 63)
+        ediff = 63;
 
     uint64_t ans = 0;
     bool extra = false;
     uint64_t ansexp = Exp(lhs);
-    uint64_t ansf = Fraction(lhs) << 1;
-    uint64_t rhsf = Fraction(rhs) << 1;
+    uint64_t ansf = Fraction(lhs) << 2;
+    uint64_t rhsf = Fraction(rhs) << 2;
 
     while(rhsf != 0){
         uint64_t cur = LowBit(rhsf) >> ediff;
@@ -285,16 +289,19 @@ uint64_t subtract(uint64_t lhs, uint64_t rhs){
     }
 
     // Adjust EXP
-    while(ansexp > 0 && (ansf & (1ull << 53)) == 0){
+    while(ansexp > 0 && (ansf & (1ull << 54)) == 0){
         --ansexp;
-        if(ansexp > 0) // underflow check
-            ansf <<= 1;
+        ansf <<= 1;
     }
+    if(ansexp == 0) // subnormalized
+        ansf >>= 1;
     // Rounding
-    if((ansf & 1) == 0)
-        ansf >>= 1;
+    if((ansf & 3) < 2)
+        ansf >>= 2;
+    else if((ansf & 3) > 2)
+        ansf = (ansf >> 2) + 1;
     else{
-        ansf >>= 1;
+        ansf >>= 2;
         if(!extra && (ansf & 1) != 0) // ties to even
             ++ansf;
     }
@@ -304,6 +311,8 @@ uint64_t subtract(uint64_t lhs, uint64_t rhs){
             ansf >>= 1;
         ++ansexp;
     }
+    if(ansexp == 0 && ansf >= (1ull << 52))
+        ++ansexp;
 
     ans = ansexp << 52 | (ansf & ((1ull << 52) - 1));
 
