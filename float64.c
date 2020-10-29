@@ -1,3 +1,5 @@
+// Release Version
+
 #include <stdio.h>
 #include <ctype.h>
 #include <assert.h>
@@ -8,8 +10,8 @@
 
 #define ADD_SYS 0
 #define SUB_SYS 0
-#define MUL_SYS 0 // Now debugging
-#define DIV_SYS 1
+#define MUL_SYS 0
+#define DIV_SYS 0
 
 const int BUFFER_LEN = 100010;
 const uint64_t INF = 0x7FF0000000000000;
@@ -421,18 +423,18 @@ uint64_t divide(uint64_t lhs, uint64_t rhs){
     uint64_t ans = 0;
     bool extra = false;
     int64_t ansexp = Exp(lhs) - Exp(rhs) + 1023;
-    uint64_t ansf = ((intEx)(Fraction(lhs)) << 53) / (intEx)(Fraction(rhs));
+    uint64_t ansf = ((intEx)(Fraction(lhs)) << 54) / (intEx)(Fraction(rhs));
 
-    if(((intEx)(Fraction(lhs)) << 53) % (intEx)(Fraction(rhs)) != 0)
+    if(((intEx)(Fraction(lhs)) << 54) % (intEx)(Fraction(rhs)) != 0)
         extra = true;
 
     // Adjusting exp
-    while(ansexp < 0 || ansf >= (1ull << 54)){
+    while(ansexp < 0 || ansf >= (1ull << 55)){
         ++ansexp;
         extra |= ansf & 1;
         ansf >>= 1;
     }
-    while(ansexp > 0 && (ansf & (1ull << 53)) == 0){
+    while(ansexp > 0 && (ansf & (1ull << 54)) == 0){
         --ansexp;
         ansf <<= 1;
     }
@@ -448,10 +450,12 @@ uint64_t divide(uint64_t lhs, uint64_t rhs){
     }
 
     // Rounding
-    if((ansf & 1) == 0)
-        ansf >>= 1;
+    if((ansf & 3) < 2)
+        ansf >>= 2;
+    else if((ansf & 3) > 3)
+        ansf = (ansf >> 2) + 1;
     else{
-        ansf >>= 1;
+        ansf >>= 2;
         if(extra)
             ++ansf;
         else if((ansf & 1) != 0)
@@ -470,7 +474,6 @@ uint64_t divide(uint64_t lhs, uint64_t rhs){
         ans = ansexp << 52 | (ansf & ((1ull << 52) - 1));
 
     ans |= ((1ull << 63) & lhs) ^ ((1ull << 63) & rhs); // Add sign
-
     return ans;
 #endif
 }
