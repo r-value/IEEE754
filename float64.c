@@ -385,14 +385,6 @@ uint64_t multiply(uint64_t lhs, uint64_t rhs){
         ans = ansexp << 52 | (ansf & ((1ull << 52) - 1));
 
     ans |= ((1ull << 63) & lhs) ^ ((1ull << 63) & rhs); // Add sign
-
-#ifdef PALL
-    uint64_t correct = d2u(u2d(lhs) * u2d(rhs));
-    printf("%llx %llx\n",correct,ans);
-    printf("%d %lld %llx\n",Sign(correct),Exp(correct),Fraction(correct));
-    printf("%d %lld %llx\n",Sign(ans),Exp(ans),Fraction(ans));
-#endif
-
     return ans;
 #endif
 }
@@ -496,9 +488,6 @@ inline uint64_t Evaluate(uint64_t lhs, uint64_t rhs, char op){
         default:
             assert(false);
     }
-#ifdef PALL
-    printf("%f %c %f = %f\n",u2d(lhs),op,u2d(rhs),u2d(ans));
-#endif
     return ans;
 }
 
